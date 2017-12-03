@@ -9,6 +9,7 @@ from Sa_Env import Sa_Env
 
 
 
+
 class QLearningTable:
     def __init__(self, actions, learning_rate=0.01, reward_decay=0.9, e_greedy=1):
         self.actions = actions  # a list
@@ -47,6 +48,7 @@ class QLearningTable:
             q = [q[i] + np.random.random() * mag - .5 * mag for i in range(len(self.actions))]
             maxQ = max(q)
 
+
         count = q.count(maxQ)
         # In case there're several state-action max values
         # we select a random one among them
@@ -77,27 +79,31 @@ class QLearningTable:
 
 
 if __name__=="__main__":
-    env=Sa_Env()
+    env = Sa_Env()
     RL = QLearningTable(actions=list(range(env.action_n)))
-
+    max_priode = 100
     priode=0
     max_reward=0
     maxreward_plot=[]
-    for x in range(100):
+    stay_time = []
+    beginn_time = 0
+    for x in range(max_priode):
         done = False
-        state=[6, 6, 6, 6]
-        state=env._reset()
+        state=[0, 0, 0, 0]
+
+        state, end_time = env._reset()
+        deta_time = end_time - beginn_time
+        stay_time.append(deta_time)
         sum_reward = 0
-        #print("a:",env.values_list)
         priode += 1
         print("priode", priode)
         #print("max_reward",max_reward)
-        for y in range(1000):
+        for y in range(100):
             print('state_now:',state)
 
             action = RL.choose_action(str(state))
             #print(RL.q_table)
-            #RL.q_table.to_excel('Qt.xlsx',sheet_name='Sheet1')
+            RL.q_table.to_excel('Qt.xlsx',sheet_name='Sheet1')
             #print("action",action)
             reward, done, state_ = env._step(action)
 
@@ -109,20 +115,20 @@ if __name__=="__main__":
             print("max_reward", max_reward)
             print("state_",state_)
             RL.learn(str(state), action, reward, str(state_))
-
-            
-           
-            rospy.sleep(1.)
+ 
             if done:
                 done = False
+                beginn_time = end_time
                 break
             elif not done:
-                state = state_
-
+                 state = state_
+            print(state)
         maxreward_plot.append(sum_reward)
 
-    x=np.arange(0,1000,1)
-    y=maxreward_plot
+            
+
+    x=np.arange(0,max_priode,1)
+    y=stay_time
     plt.figure(1)
     plt.plot(x, y)
     plt.show()

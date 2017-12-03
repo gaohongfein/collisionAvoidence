@@ -12,156 +12,169 @@ from gazebo_msgs.msg import ModelState
 from nav_msgs.msg import Odometry
 from std_srvs.srv import Empty
 from tf.transformations import euler_from_quaternion
+from rosgraph_msgs.msg import Clock
 
 
 class Sa_Env():
     def __init__(self):
         self.vel_pub=rospy.Publisher('cmd_vel_command',Twist,queue_size=5)
-        self.values_list=[4, 4, 4, 4]
+        self.values_list=[0, 0]
         self.done=False
+        self.test = 0
         self.pause = rospy.ServiceProxy('/gazebo/pause_physics', Empty)
         self.unpause = rospy.ServiceProxy('/gazebo/unpause_physics', Empty)
-        self._reset()
+        # self._reset()
         self.action_space=['f','l','r']
         self.action_n=len(self.action_space)
         self.min_range=0.5
         rospy.init_node('gym',anonymous=True)
 
+    def _deal_scan_data(self, scan_date):
+        data = scan_date.ranges
+        state = [0, 0, 0, 0]
+        done = False
+        dis_data = []
+        safe_range = 5
+        reward = 20
+        for i in range(0, 1300, 100):
+            if data[i]>=safe_range:
+                dis_data.append(safe_range)
+            else:
+                dis_data.append((int)(data[i]))
+                state[3] = 1
+
+            if data[i] < self.min_range:
+                done = True
+                reward = -500
+            if data[i] < safe_range:
+                reward = -20
+            
+
+        
+        if dis_data[4] + dis_data[5] > dis_data[7] + dis_data[8]:
+            state[0] = 1
+        elif dis_data[4] + dis_data[5] < dis_data[7] + dis_data[8]:
+            state[0] = 2
+        else:
+            state[0] = 0
+
+        if data[600] < safe_range or data[620] < safe_range or data[580] < safe_range:
+            state[1] = 1
+        else:
+            state[1] = 0
+
+        if data[1200] < safe_range or data[20] < safe_range or data[1080] < safe_range:
+            state[2] = 1
+        else:
+            state[2] = 0
+
+        return state, done, reward
+
+
+
+
+
+
+
+
+
 
 
 
     def _step(self,action):
+        # rospy.sleep(1.)
+        print("test now",self.test)
+
         rospy.wait_for_service('/gazebo/unpause_physics')
         try:
+            #resp_pause = pause.call()
             self.unpause()
         except (rospy.ServiceException) as e:
-            print ("/gazebo/unpause_physics service call failed")
+            pass
 
         twist = Twist()
-
+        forward_v = 2
         if action==0:#forward
-            twist.linear.x = 1
+            twist.linear.x = forward_v
             twist.angular.z = 0.0
             self.vel_pub.publish(twist)
         elif action == 1:#left
-            twist.linear.x = 0
+            twist.linear.x = forward_v
             twist.angular.z = 0.785*4
             self.vel_pub.publish(twist)
         elif action == 2:
-            twist.linear.x = 0
+            twist.linear.x = forward_v
             twist.angular.z = -0.785*4
             self.vel_pub.publish(twist)
+        # elif action == 3:
+        #     twist.linear.x = -forward_v
+        #     twist.angular.z = 0
+        #     self.vel_pub.publish(twist)
         rospy.sleep(1)
-        twist.linear.x = 0
-        twist.angular.z = 0
-        self.vel_pub.publish(twist)
+        data = rospy.wait_for_message('/scan', LaserScan, timeout=5)
+        # data_gazebo_state = rospy.wait_for_message('odom_diff', Odometry, timeout= 5)
+        # print('odom_diff', int(data_gazebo_state.pose.pose.position.x), int(data_gazebo_state.pose.pose.position.y))
+        print("data",len(data.ranges))
 
-
-        data = None
-        while data is None:
-            try:
-                self.scan_sub = rospy.Subscriber('/scan', LaserScan, self.laser_callbacks)
-                data = self.values_list
-            except:
-                pass
         rospy.wait_for_service('/gazebo/pause_physics')
         try:
-            #resp_pause = pause.call()
             self.pause()
         except (rospy.ServiceException) as e:
             pass
 
-        # done = self.values_list[0] < self.min_range or self.values_list[1] < \
-        #                            self.min_range or \
-        #       self.values_list[2] < self.min_range or self.values_list[3] < self.min_range \
-        #       or self.values_list[4] < self.min_range
-        state = self.values_list
-        #rospy.sleep(1.)
+        state, self.done, reward = self._deal_scan_data(data)
+        # if 15<int(data_gazebo_state.pose.pose.position.x)<18 and  0<int(data_gazebo_state.pose.pose.position.y)<2:
+        #     reward = 100
 
-        if not self.done:
-            if action == 0:
-                reward = 5
-            else:
-                reward = 0
-        else:
-            reward = -300
-        rospy.wait_for_service('/gazebo/unpause_physics')
-        try:
-            self.unpause()
-        except (rospy.ServiceException) as e:
-            print ("/gazebo/unpause_physics service call failed")
+        # if action == 1 or action == 2 or action == 3:
+        #     reward = 0
 
+        # if not self.done:
+        #     if action == 0:
+        #         reward = 5
+        #     else:
+        #         reward = 0
+        # else:
+        #     reward = -100
         return reward, self.done, state
-
-    def laser_callbacks(self,msg):
-        min_real_distance=4
-        for i in range(900,299,-30):
-            if msg.ranges[i] < self.min_range:
-                    self.done=True
-                    break
-            
-            if msg.ranges[i] < min_real_distance:
-                min_real_distance=msg.ranges[i]
-            if i % 150 == 0:
-                
-                if min_real_distance >= 4:
-                    self.values_list[5-i/150]=4
-                    min_real_distance = 4
-                else:
-                    self.values_list[5-i/150]=((int)(min_real_distance))
-                    min_real_distance = 4
-
-
-
-
-        #self.values_list = [msg.ranges[300], msg.ranges[450], msg.ranges[600], msg.ranges[750],msg.ranges[900]]
-        #print(self.values_list)
 
 
     def _reset(self):
         Set_model = rospy.ServiceProxy('/gazebo/set_model_state', SetModelState)
         State = ModelState()
         State.model_name = "summitXl"
-        State.pose.position.x = 5*np.random.randn()
-        State.pose.position.y = 4*np.random.randn()
+        State.pose.position.x = 5*np.random.random()
+        State.pose.position.y = 5*np.random.random()-10
         State.pose.position.z = 0
-
         State.pose.orientation.z = 3.14*np.random.randn()
-        
-
         State.reference_frame = "world"
         Set_done=Set_model(State)
         print(Set_done)
 
-        # Unpause simulation to make observation
         rospy.wait_for_service('/gazebo/unpause_physics')
         try:
-            #resp_pause = pause.call()
             self.unpause()
         except (rospy.ServiceException) as e:
             print ("/gazebo/unpause_physics service call failed")
 
 
-        data = None
-        while data is None:
-            try:
-                self.scan_sub = rospy.Subscriber('/scan', LaserScan, self.laser_callbacks)
-                data = self.values_list
-                state=data
-            except:
-                pass
+        data = rospy.wait_for_message('/scan', LaserScan, timeout=5)
+        time = rospy.wait_for_message('/clock', Clock, timeout=5)
+
         rospy.wait_for_service('/gazebo/pause_physics')
         try:
-            #resp_pause = pause.call()
             self.pause()
         except (rospy.ServiceException) as e:
-            print ("/gazebo/pause_physics service call failed")
-        self.done=False
+            pass
+
+        state, self.done, reward= self._deal_scan_data(data)
+        time = time.clock.secs
 
 
 
 
-        return state
+
+        return state, time
 
     #def _check_
 
